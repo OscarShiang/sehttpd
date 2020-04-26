@@ -193,3 +193,5 @@ kprobe
 jprobe
 src
 dst
+mmap
+sendfile

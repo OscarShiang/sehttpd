@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <sys/mman.h>
+#include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -203,14 +203,8 @@ static void serve_static(int fd,
 
     int srcfd = open(filename, O_RDONLY, 0);
     assert(srcfd > 2 && "open error");
-    /* TODO: use sendfile(2) for zero-copy support */
-    char *srcaddr = mmap(NULL, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
-    assert(srcaddr != (void *) -1 && "mmap error");
+    sendfile(fd, srcfd, NULL, filesize);
     close(srcfd);
-
-    writen(fd, srcaddr, filesize);
-
-    munmap(srcaddr, filesize);
 }
 
 static inline int init_http_out(http_out_t *o, int fd)
