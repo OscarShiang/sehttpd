@@ -164,28 +164,36 @@ static void serve_static(int fd,
     sprintf(header, "HTTP/1.1 %d %s\r\n", out->status,
             get_msg_from_status(out->status));
 
+    size_t len = strlen(header);
+
     if (out->keep_alive) {
-        sprintf(header, "%sConnection: keep-alive\r\n", header);
-        sprintf(header, "%sKeep-Alive: timeout=%d\r\n", header,
-                TIMEOUT_DEFAULT);
+        len += snprintf(header + len, MAXLINE - len,
+                        "Connection: keep-alive\r\n"
+                        "Keep-Alive: timeout=%d\r\n",
+                        TIMEOUT_DEFAULT);
     }
 
     if (out->modified) {
         char buf[SHORTLINE];
-        sprintf(header, "%sContent-type: %s\r\n", header, file_type);
-        sprintf(header, "%sContent-length: %zu\r\n", header, filesize);
+
+        len += snprintf(header + len, MAXLINE - len,
+                        "Content-type: %s\r\n"
+                        "Content-length: %zu\r\n",
+                        file_type, filesize);
+
         struct tm tm;
         localtime_r(&(out->mtime), &tm);
         strftime(buf, SHORTLINE, "%a, %d %b %Y %H:%M:%S GMT", &tm);
-        sprintf(header, "%sLast-Modified: %s\r\n", header, buf);
+
+        len +=
+            snprintf(header + len, MAXLINE - len, "Last-Modified: %s\r\n", buf);
     }
 
-    sprintf(header, "%sServer: seHTTPd\r\n", header);
-    sprintf(header, "%s\r\n", header);
+    len += snprintf(header + len, MAXLINE - len, "Server: seHTTPd\r\n\r\n");
 
     size_t n = (size_t) writen(fd, header, strlen(header));
-    assert(n == strlen(header) && "writen error");
-    if (n != strlen(header)) {
+    assert(n == len && "writen error");
+    if (n != len) {
         log_err("n != strlen(header)");
         return;
     }
