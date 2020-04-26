@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +18,11 @@
 #define MAXEVENTS 1024
 
 #define LISTENQ 1024
+
+static const char short_options[] = "p:r:h";
+static const struct option long_options[] = {{"port", 1, NULL, 'p'},
+                                             {"root", 1, NULL, 'r'},
+                                             {"help", 0, NULL, 'h'}};
 
 static int open_listenfd(int port)
 {
@@ -69,11 +75,21 @@ static int sock_set_non_blocking(int fd)
     return 0;
 }
 
-/* TODO: use command line options to specify */
+static void print_usage()
+{
+    printf(
+        "Usage: sehttpd [options]\n"
+        "Options:\n"
+        "   -p, --port       port number to be specified\n"
+        "   -r, --root       web page root to be specified\n"
+        "   -h, --help       display this message\n");
+    exit(0);
+}
+
 #define PORT 8081
 #define WEBROOT "./www"
 
-int main()
+int main(int argc, char *argv[])
 {
     /* when a fd is closed by remote, writing to this fd will cause system
      * send SIGPIPE to this process, which exit the program
@@ -85,7 +101,29 @@ int main()
         return 0;
     }
 
-    int listenfd = open_listenfd(PORT);
+    /* parsing the arguments */
+    int port = PORT;
+    char *root = WEBROOT;
+    int next_option;
+    do {
+        next_option =
+            getopt_long(argc, argv, short_options, long_options, NULL);
+        switch (next_option) {
+        case 'p':
+            port = atoi(optarg);
+            break;
+        case 'r':
+            root = strdup(optarg);
+            break;
+        case 'h':
+            print_usage();
+            break;
+        case -1:
+            break;
+        }
+    } while (next_option != -1);
+
+    int listenfd = open_listenfd(port);
     int rc UNUSED = sock_set_non_blocking(listenfd);
     assert(rc == 0 && "sock_set_non_blocking");
 
@@ -97,7 +135,7 @@ int main()
     assert(events && "epoll_event: malloc");
 
     http_request_t *request = malloc(sizeof(http_request_t));
-    init_http_request(request, listenfd, epfd, WEBROOT);
+    init_http_request(request, listenfd, epfd, root);
 
     struct epoll_event event = {
         .data.ptr = request,
@@ -144,7 +182,7 @@ int main()
                         break;
                     }
 
-                    init_http_request(request, infd, epfd, WEBROOT);
+                    init_http_request(request, infd, epfd, root);
                     event.data.ptr = request;
                     event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
                     epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &event);
@@ -165,5 +203,6 @@ int main()
         }
     }
 
+    free(root);
     return 0;
 }
