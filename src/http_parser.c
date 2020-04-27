@@ -35,6 +35,23 @@ int http_parse_request_line(http_request_t *r)
         s_almost_done
     } state;
 
+    /* cppcheck-suppress syntaxError */
+    const void *conditions[] = {&&c_start,
+                                &&c_method,
+                                &&c_spaces_before_uri,
+                                &&c_after_slash_in_uri,
+                                &&c_http,
+                                &&c_http_H,
+                                &&c_http_HT,
+                                &&c_http_HTT,
+                                &&c_http_HTTP,
+                                &&c_first_major_digit,
+                                &&c_major_digit,
+                                &&c_first_minor_digit,
+                                &&c_minor_digit,
+                                &&c_spaces_after_digit,
+                                &&c_almost_done};
+
     state = r->state;
 
     for (pi = r->pos; pi < r->last; pi++) {
@@ -42,211 +59,211 @@ int http_parse_request_line(http_request_t *r)
         ch = *p;
 
         /* TODO: use computed goto for efficient dispatching */
-        switch (state) {
-        /* HTTP methods: GET, HEAD, POST */
-        case s_start:
-            r->request_start = p;
+        goto *conditions[state];
 
-            if (ch == CR || ch == LF)
-                break;
+    /* HTTP methods: GET, HEAD, POST */
+    c_start:
+        r->request_start = p;
 
-            if ((ch < 'A' || ch > 'Z') && ch != '_')
-                return HTTP_PARSER_INVALID_METHOD;
-
-            state = s_method;
+        if (ch == CR || ch == LF)
             break;
 
-        case s_method:
-            if (ch == ' ') {
-                m = r->request_start;
+        if ((ch < 'A' || ch > 'Z') && ch != '_')
+            return HTTP_PARSER_INVALID_METHOD;
 
-                switch (p - m) {
-                case 3:
-                    if (cst_strcmp(m, 'G', 'E', 'T', ' ')) {
-                        r->method = HTTP_GET;
-                        break;
-                    }
-                    break;
+        state = s_method;
+        continue;
 
-                case 4:
-                    if (cst_strcmp(m, 'P', 'O', 'S', 'T')) {
-                        r->method = HTTP_POST;
-                        break;
-                    }
+    c_method:
+        if (ch == ' ') {
+            m = r->request_start;
 
-                    if (cst_strcmp(m, 'H', 'E', 'A', 'D')) {
-                        r->method = HTTP_HEAD;
-                        break;
-                    }
-                    break;
-
-                default:
-                    r->method = HTTP_UNKNOWN;
+            switch (p - m) {
+            case 3:
+                if (cst_strcmp(m, 'G', 'E', 'T', ' ')) {
+                    r->method = HTTP_GET;
                     break;
                 }
-                state = s_spaces_before_uri;
                 break;
-            }
 
-            if ((ch < 'A' || ch > 'Z') && ch != '_')
-                return HTTP_PARSER_INVALID_METHOD;
-            break;
+            case 4:
+                if (cst_strcmp(m, 'P', 'O', 'S', 'T')) {
+                    r->method = HTTP_POST;
+                    break;
+                }
 
-        /* space* before URI */
-        case s_spaces_before_uri:
-            if (ch == '/') {
-                r->uri_start = p;
-                state = s_after_slash_in_uri;
+                if (cst_strcmp(m, 'H', 'E', 'A', 'D')) {
+                    r->method = HTTP_HEAD;
+                    break;
+                }
                 break;
-            }
 
-            switch (ch) {
-            case ' ':
-                break;
             default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
-            break;
-
-        case s_after_slash_in_uri:
-            switch (ch) {
-            case ' ':
-                r->uri_end = p;
-                state = s_http;
-                break;
-            default:
+                r->method = HTTP_UNKNOWN;
                 break;
             }
+            state = s_spaces_before_uri;
+            continue;
+        }
+
+        if ((ch < 'A' || ch > 'Z') && ch != '_')
+            return HTTP_PARSER_INVALID_METHOD;
+        continue;
+
+    /* space* before URI */
+    c_spaces_before_uri:
+        if (ch == '/') {
+            r->uri_start = p;
+            state = s_after_slash_in_uri;
+            continue;
+        }
+
+        switch (ch) {
+        case ' ':
             break;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
+        }
+        continue;
 
-        /* space+ after URI */
-        case s_http:
-            switch (ch) {
-            case ' ':
-                break;
-            case 'H':
-                state = s_http_H;
-                break;
-            default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
+    c_after_slash_in_uri:
+        switch (ch) {
+        case ' ':
+            r->uri_end = p;
+            state = s_http;
             break;
-
-        case s_http_H:
-            switch (ch) {
-            case 'T':
-                state = s_http_HT;
-                break;
-            default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
+        default:
             break;
+        }
+        continue;
 
-        case s_http_HT:
-            switch (ch) {
-            case 'T':
-                state = s_http_HTT;
-                break;
-            default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
+    /* space+ after URI */
+    c_http:
+        switch (ch) {
+        case ' ':
             break;
-
-        case s_http_HTT:
-            switch (ch) {
-            case 'P':
-                state = s_http_HTTP;
-                break;
-            default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
+        case 'H':
+            state = s_http_H;
             break;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
+        }
+        continue;
 
-        case s_http_HTTP:
-            switch (ch) {
-            case '/':
-                state = s_first_major_digit;
-                break;
-            default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
+    c_http_H:
+        switch (ch) {
+        case 'T':
+            state = s_http_HT;
             break;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
+        }
+        continue;
 
-        /* first digit of major HTTP version */
-        case s_first_major_digit:
-            if (ch < '1' || ch > '9')
-                return HTTP_PARSER_INVALID_REQUEST;
-
-            r->http_major = ch - '0';
-            state = s_major_digit;
+    c_http_HT:
+        switch (ch) {
+        case 'T':
+            state = s_http_HTT;
             break;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
+        }
+        continue;
 
-        /* major HTTP version or dot */
-        case s_major_digit:
-            if (ch == '.') {
-                state = s_first_minor_digit;
-                break;
-            }
-
-            if (ch < '0' || ch > '9')
-                return HTTP_PARSER_INVALID_REQUEST;
-
-            r->http_major = r->http_major * 10 + ch - '0';
+    c_http_HTT:
+        switch (ch) {
+        case 'P':
+            state = s_http_HTTP;
             break;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
+        }
+        continue;
 
-        /* first digit of minor HTTP version */
-        case s_first_minor_digit:
-            if (ch < '0' || ch > '9')
-                return HTTP_PARSER_INVALID_REQUEST;
-
-            r->http_minor = ch - '0';
-            state = s_minor_digit;
+    c_http_HTTP:
+        switch (ch) {
+        case '/':
+            state = s_first_major_digit;
             break;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
+        }
+        continue;
 
-        /* minor HTTP version or end of request line */
-        case s_minor_digit:
-            if (ch == CR) {
-                state = s_almost_done;
-                break;
-            }
+    /* first digit of major HTTP version */
+    c_first_major_digit:
+        if (ch < '1' || ch > '9')
+            return HTTP_PARSER_INVALID_REQUEST;
 
-            if (ch == LF)
-                goto done;
+        r->http_major = ch - '0';
+        state = s_major_digit;
+        continue;
 
-            if (ch == ' ') {
-                state = s_spaces_after_digit;
-                break;
-            }
+    /* major HTTP version or dot */
+    c_major_digit:
+        if (ch == '.') {
+            state = s_first_minor_digit;
+            continue;
+        }
 
-            if (ch < '0' || ch > '9')
-                return HTTP_PARSER_INVALID_REQUEST;
+        if (ch < '0' || ch > '9')
+            return HTTP_PARSER_INVALID_REQUEST;
 
-            r->http_minor = r->http_minor * 10 + ch - '0';
+        r->http_major = r->http_major * 10 + ch - '0';
+        continue;
+
+    /* first digit of minor HTTP version */
+    c_first_minor_digit:
+        if (ch < '0' || ch > '9')
+            return HTTP_PARSER_INVALID_REQUEST;
+
+        r->http_minor = ch - '0';
+        state = s_minor_digit;
+        continue;
+
+    /* minor HTTP version or end of request line */
+    c_minor_digit:
+        if (ch == CR) {
+            state = s_almost_done;
+            continue;
+        }
+
+        if (ch == LF)
+            goto done;
+
+        if (ch == ' ') {
+            state = s_spaces_after_digit;
+            continue;
+        }
+
+        if (ch < '0' || ch > '9')
+            return HTTP_PARSER_INVALID_REQUEST;
+
+        r->http_minor = r->http_minor * 10 + ch - '0';
+        continue;
+
+    c_spaces_after_digit:
+        switch (ch) {
+        case ' ':
             break;
-
-        case s_spaces_after_digit:
-            switch (ch) {
-            case ' ':
-                break;
-            case CR:
-                state = s_almost_done;
-                break;
-            case LF:
-                goto done;
-            default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
+        case CR:
+            state = s_almost_done;
             break;
+        case LF:
+            goto done;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
+        }
+        continue;
 
-        /* end of request line */
-        case s_almost_done:
-            r->request_end = p - 1;
-            switch (ch) {
-            case LF:
-                goto done;
-            default:
-                return HTTP_PARSER_INVALID_REQUEST;
-            }
+    /* end of request line */
+    c_almost_done:
+        r->request_end = p - 1;
+        switch (ch) {
+        case LF:
+            goto done;
+        default:
+            return HTTP_PARSER_INVALID_REQUEST;
         }
     }
 
