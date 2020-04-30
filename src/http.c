@@ -297,7 +297,7 @@ void do_request(void *ptr)
         if (!out->status)
             out->status = HTTP_OK;
 
-        serve_static(fd, filename, sbuf.st_size, out);
+        serve_static(fd, filename, sbuf.st_size + 1, out);
 
         if (!out->keep_alive) {
             debug("no keep_alive! ready to close");
