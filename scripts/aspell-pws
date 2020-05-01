@@ -196,3 +196,5 @@ dst
 mmap
 sendfile
 goto
+htstress
+benchmarking

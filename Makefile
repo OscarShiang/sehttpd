@@ -1,7 +1,7 @@
 .PHONY: all check clean
 TARGET = sehttpd
 GIT_HOOKS := .git/hooks/applied
-all: $(GIT_HOOKS) $(TARGET)
+all: $(GIT_HOOKS) htstress $(TARGET)
 
 $(GIT_HOOKS):
 	@scripts/install-git-hooks
@@ -15,6 +15,8 @@ CFLAGS += -std=gnu99 -Wall -W
 CFLAGS += -DUNUSED="__attribute__((unused))"
 CFLAGS += -DNDEBUG
 LDFLAGS =
+
+CFLAG_HTSTRESS += -std=gnu11 -Wall -Werror -Wextra -lpthread
 
 # standard build rules
 .SUFFIXES: .o .c
@@ -34,11 +36,15 @@ $(TARGET): $(OBJS)
 	$(VECHO) "  LD\t$@\n"
 	$(Q)$(CC) -o $@ $^ $(LDFLAGS)
 
+htstress: src/htstress.c
+	$(VECHO) "  CC\t$@\n"
+	$(Q)$(CC) -o $@ $< $(CFLAG_HTSTRESS)
+
 check: all
 	@scripts/test.sh
 
 clean:
 	$(VECHO) "  Cleaning...\n"
-	$(Q)$(RM) $(TARGET) $(OBJS) $(deps)
+	$(Q)$(RM) $(TARGET) $(OBJS) $(deps) htstress
 
 -include $(deps)
