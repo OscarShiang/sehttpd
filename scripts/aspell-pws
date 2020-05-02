@@ -198,3 +198,4 @@ sendfile
 goto
 htstress
 benchmarking
+BUF

@@ -218,6 +218,9 @@ static inline int init_http_out(http_out_t *o, int fd)
 
 void do_request(void *ptr)
 {
+    /* check whether MAX_BUF is a power of 2 in compile time */
+    _Static_assert(!(MAX_BUF & (MAX_BUF - 1)),
+                   "Problems may occure since MAX_BUF is not a power of 2");
     http_request_t *r = ptr;
     int fd = r->fd;
     int rc;

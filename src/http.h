@@ -26,6 +26,9 @@ enum http_status {
     HTTP_NOT_FOUND = 404,
 };
 
+/* to compute modulo with bitwise AND
+ * must be a power of 2
+ */
 #define MAX_BUF 8192
 
 typedef struct {
