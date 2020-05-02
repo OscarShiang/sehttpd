@@ -226,9 +226,9 @@ void do_request(void *ptr)
 
     del_timer(r);
     for (;;) {
-        char *plast = &r->buf[r->last % MAX_BUF];
-        size_t remain_size =
-            MIN(MAX_BUF - (r->last - r->pos) - 1, MAX_BUF - r->last % MAX_BUF);
+        char *plast = &r->buf[r->last & (MAX_BUF - 1)];
+        size_t remain_size = MIN(MAX_BUF - (r->last - r->pos) - 1,
+                                 MAX_BUF - (r->last & (MAX_BUF - 1)));
 
         int n = read(fd, plast, remain_size);
         assert(r->last - r->pos < MAX_BUF && "request buffer overflow!");

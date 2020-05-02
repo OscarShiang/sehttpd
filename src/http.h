@@ -26,7 +26,7 @@ enum http_status {
     HTTP_NOT_FOUND = 404,
 };
 
-#define MAX_BUF 8124
+#define MAX_BUF 8192
 
 typedef struct {
     void *root;

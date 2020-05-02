@@ -31,13 +31,13 @@
         return EAGAIN;    \
     } while (0)
 
-#define dispatch(i)                            \
-    do {                                       \
-        if (i >= r->last)                      \
-            interrupt_parse();                 \
-        p = (uint8_t *) &r->buf[pi % MAX_BUF]; \
-        ch = *p;                               \
-        goto *conditions[state];               \
+#define dispatch(i)                                  \
+    do {                                             \
+        if (i >= r->last)                            \
+            interrupt_parse();                       \
+        p = (uint8_t *) &r->buf[pi & (MAX_BUF - 1)]; \
+        ch = *p;                                     \
+        goto *conditions[state];                     \
     } while (0)
 
 int http_parse_request_line(http_request_t *r)
@@ -292,11 +292,6 @@ int http_parse_request_body(http_request_t *r)
     http_header_t *hd;
     pi = r->pos;
     dispatch(pi);
-#if 0
-    for (pi = r->pos; pi < r->last; pi++) {
-	p = (uint8_t *) &r->buf[pi % MAX_BUF];
-        ch = *p;
-#endif
 
 case_start:
     if (ch == CR || ch == LF)
