@@ -261,7 +261,6 @@ static void *worker(void *arg)
             } else if (evts[n].events & EPOLLIN) {
                 for (;;) {
                     ret = recv(ec->fd, inbuf, sizeof(inbuf), 0);
-                    printf("[buf respones]: %s[end]\n", inbuf);
 
                     if (ret == -1 && errno != EAGAIN) {
                         perror("recv");

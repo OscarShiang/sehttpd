@@ -40,6 +40,9 @@ htstress: src/htstress.c
 	$(VECHO) "  CC\t$@\n"
 	$(Q)$(CC) -o $@ $< $(CFLAG_HTSTRESS)
 
+test: all
+	./htstress -n 100000 -c 1 -t 4 http://localhost:8081/
+
 check: all
 	@scripts/test.sh
 
