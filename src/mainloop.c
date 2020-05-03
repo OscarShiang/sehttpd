@@ -113,7 +113,7 @@ int main(int argc, char *argv[])
             port = atoi(optarg);
             break;
         case 'r':
-            root = strdup(optarg);
+            root = optarg;
             break;
         case 'h':
             print_usage();
@@ -203,6 +203,5 @@ int main(int argc, char *argv[])
         }
     }
 
-    free(root);
     return 0;
 }
