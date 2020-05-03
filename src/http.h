@@ -35,7 +35,7 @@ typedef struct {
     void *root;
     int fd;
     int epfd;
-    char buf[MAX_BUF]; /* ring buffer */
+    char buf[MAX_BUF] __attribute__((aligned(8))); /* ring buffer */
     size_t pos, last;
     int state;
     void *request_start;
