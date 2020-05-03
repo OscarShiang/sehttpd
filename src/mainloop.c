@@ -8,6 +8,8 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "http.h"
@@ -19,10 +21,20 @@
 
 #define LISTENQ 1024
 
+#define MAXWORKER 32
+
 static const char short_options[] = "p:r:h";
 static const struct option long_options[] = {{"port", 1, NULL, 'p'},
                                              {"root", 1, NULL, 'r'},
                                              {"help", 0, NULL, 'h'}};
+
+typedef struct {
+    int epfd;
+    int listenfd;
+    struct epoll_event event;
+    struct epoll_event *events;
+    char *root;
+} worker_param;
 
 static int open_listenfd(int port)
 {
@@ -86,6 +98,104 @@ static void print_usage()
     exit(0);
 }
 
+void server_loop(worker_param param)
+{
+    /* copy parameters */
+    int epfd = param.epfd;
+    int listenfd = param.listenfd;
+    struct epoll_event event = param.event;
+    struct epoll_event *events = param.events;
+    char *root = param.root;
+
+    http_request_t *request = malloc(sizeof(http_request_t));
+    init_http_request(request, listenfd, epfd, root);
+
+    /* epoll_wait loop */
+    while (1) {
+        int time = find_timer();
+        debug("wait time = %d", time);
+        int n = epoll_wait(epfd, events, MAXEVENTS, time);
+        handle_expired_timers();
+
+        for (int i = 0; i < n; i++) {
+            http_request_t *r = events[i].data.ptr;
+            int fd = r->fd;
+            if (listenfd == fd) {
+                /* we hava one or more incoming connections */
+                while (1) {
+                    socklen_t inlen = 1;
+                    struct sockaddr_in clientaddr;
+                    int infd = accept(listenfd, (struct sockaddr *) &clientaddr,
+                                      &inlen);
+                    if (infd < 0) {
+                        if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+                            /* we have processed all incoming connections */
+                            break;
+                        }
+                        log_err("accept");
+                        break;
+                    }
+
+                    int rc UNUSED = sock_set_non_blocking(infd);
+                    assert(rc == 0 && "sock_set_non_blocking");
+
+                    request = malloc(sizeof(http_request_t));
+                    if (!request) {
+                        log_err("malloc");
+                        break;
+                    }
+
+                    init_http_request(request, infd, epfd, root);
+                    event.data.ptr = request;
+                    event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
+                    epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &event);
+
+                    add_timer(request, TIMEOUT_DEFAULT, http_close_conn);
+                }
+            } else {
+                if ((events[i].events & EPOLLERR) ||
+                    (events[i].events & EPOLLHUP) ||
+                    (!(events[i].events & EPOLLIN))) {
+                    log_err("epoll error fd: %d", r->fd);
+                    close(fd);
+                    continue;
+                }
+
+                do_request(events[i].data.ptr);
+            }
+        }
+    }
+}
+
+pid_t create_worker(worker_param param)
+{
+    pid_t pid = fork();
+    if (pid < 0) {
+        /* fork fail */
+    } else if (pid > 0) {
+        return pid;
+    }
+
+    server_loop(param);
+    return 0;
+}
+
+int destroy_worker(pid_t pid)
+{
+    int status;
+    kill(pid, SIGTERM);
+    waitpid(pid, &status, 0);
+    if (status < 0)
+        return -1;
+    return 0;
+}
+
+void sighandler(int sig)
+{
+    (void) sig;
+    printf("Terminating web server.\n");
+}
+
 #define PORT 8081
 #define WEBROOT "./www"
 
@@ -145,63 +255,28 @@ int main(int argc, char *argv[])
 
     timer_init();
 
+    /* copy the parameters */
+    worker_param param = {.epfd = epfd,
+                          .event = event,
+                          .events = events,
+                          .listenfd = listenfd,
+                          .root = root};
+    /* create the childrend process */
+    pid_t workers[MAXWORKER];
+    for (int i = 0; i < MAXWORKER; i++)
+        workers[i] = create_worker(param);
+
     printf("Web server started.\n");
 
-    /* epoll_wait loop */
-    while (1) {
-        int time = find_timer();
-        debug("wait time = %d", time);
-        int n = epoll_wait(epfd, events, MAXEVENTS, time);
-        handle_expired_timers();
+    signal(SIGTERM, sighandler);
+    signal(SIGINT, sighandler);
 
-        for (int i = 0; i < n; i++) {
-            http_request_t *r = events[i].data.ptr;
-            int fd = r->fd;
-            if (listenfd == fd) {
-                /* we hava one or more incoming connections */
-                while (1) {
-                    socklen_t inlen = 1;
-                    struct sockaddr_in clientaddr;
-                    int infd = accept(listenfd, (struct sockaddr *) &clientaddr,
-                                      &inlen);
-                    if (infd < 0) {
-                        if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-                            /* we have processed all incoming connections */
-                            break;
-                        }
-                        log_err("accept");
-                        break;
-                    }
+    /* main process idle */
+    pause();
 
-                    rc = sock_set_non_blocking(infd);
-                    assert(rc == 0 && "sock_set_non_blocking");
-
-                    request = malloc(sizeof(http_request_t));
-                    if (!request) {
-                        log_err("malloc");
-                        break;
-                    }
-
-                    init_http_request(request, infd, epfd, root);
-                    event.data.ptr = request;
-                    event.events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-                    epoll_ctl(epfd, EPOLL_CTL_ADD, infd, &event);
-
-                    add_timer(request, TIMEOUT_DEFAULT, http_close_conn);
-                }
-            } else {
-                if ((events[i].events & EPOLLERR) ||
-                    (events[i].events & EPOLLHUP) ||
-                    (!(events[i].events & EPOLLIN))) {
-                    log_err("epoll error fd: %d", r->fd);
-                    close(fd);
-                    continue;
-                }
-
-                do_request(events[i].data.ptr);
-            }
-        }
-    }
+    /* release the child process */
+    for (int i = 0; i < MAXWORKER; i++)
+        destroy_worker(workers[i]);
 
     return 0;
 }
