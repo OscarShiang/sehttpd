@@ -29,10 +29,7 @@ static const struct option long_options[] = {{"port", 1, NULL, 'p'},
                                              {"help", 0, NULL, 'h'}};
 
 typedef struct {
-    int epfd;
     int listenfd;
-    struct epoll_event event;
-    struct epoll_event *events;
     char *root;
 } worker_param;
 
@@ -101,14 +98,26 @@ static void print_usage()
 void server_loop(worker_param param)
 {
     /* copy parameters */
-    int epfd = param.epfd;
     int listenfd = param.listenfd;
-    struct epoll_event event = param.event;
-    struct epoll_event *events = param.events;
     char *root = param.root;
+
+    /* create epoll and add listenfd */
+    int epfd = epoll_create1(0 /* flags */);
+    assert(epfd > 0 && "epoll_create1");
+
+    struct epoll_event events[MAXEVENTS];
+    assert(events && "epoll_event: malloc");
 
     http_request_t *request = malloc(sizeof(http_request_t));
     init_http_request(request, listenfd, epfd, root);
+
+    struct epoll_event event = {
+        .data.ptr = request,
+        .events = EPOLLIN | EPOLLET,
+    };
+    epoll_ctl(epfd, EPOLL_CTL_ADD, listenfd, &event);
+
+    timer_init();
 
     /* epoll_wait loop */
     while (1) {
@@ -237,30 +246,9 @@ int main(int argc, char *argv[])
     int rc UNUSED = sock_set_non_blocking(listenfd);
     assert(rc == 0 && "sock_set_non_blocking");
 
-    /* create epoll and add listenfd */
-    int epfd = epoll_create1(0 /* flags */);
-    assert(epfd > 0 && "epoll_create1");
-
-    struct epoll_event *events = malloc(sizeof(struct epoll_event) * MAXEVENTS);
-    assert(events && "epoll_event: malloc");
-
-    http_request_t *request = malloc(sizeof(http_request_t));
-    init_http_request(request, listenfd, epfd, root);
-
-    struct epoll_event event = {
-        .data.ptr = request,
-        .events = EPOLLIN | EPOLLET,
-    };
-    epoll_ctl(epfd, EPOLL_CTL_ADD, listenfd, &event);
-
-    timer_init();
 
     /* copy the parameters */
-    worker_param param = {.epfd = epfd,
-                          .event = event,
-                          .events = events,
-                          .listenfd = listenfd,
-                          .root = root};
+    worker_param param = {.listenfd = listenfd, .root = root};
     /* create the childrend process */
     pid_t workers[MAXWORKER];
     for (int i = 0; i < MAXWORKER; i++)
@@ -270,6 +258,7 @@ int main(int argc, char *argv[])
 
     signal(SIGTERM, sighandler);
     signal(SIGINT, sighandler);
+    signal(SIGKILL, sighandler);
 
     /* main process idle */
     pause();
