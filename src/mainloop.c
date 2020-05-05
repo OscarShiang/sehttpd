@@ -180,7 +180,8 @@ pid_t create_worker(worker_param param)
 {
     pid_t pid = fork();
     if (pid < 0) {
-        /* fork fail */
+        puts("fork() fail");
+        return -1;
     } else if (pid > 0) {
         return pid;
     }
@@ -251,8 +252,12 @@ int main(int argc, char *argv[])
     worker_param param = {.listenfd = listenfd, .root = root};
     /* create the childrend process */
     pid_t workers[MAXWORKER];
-    for (int i = 0; i < MAXWORKER; i++)
-        workers[i] = create_worker(param);
+    for (int i = 0; i < MAXWORKER; i++) {
+        pid_t pid;
+        if ((pid = create_worker(param)))
+            break;
+        workers[i] = pid;
+    }
 
     printf("Web server started.\n");
 
