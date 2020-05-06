@@ -105,6 +105,12 @@ static void do_error(int fd,
                      char *longmsg)
 {
     char header[MAXLINE], body[MAXLINE];
+    char buf[SHORTLINE];
+    time_t date;
+    struct tm tm;
+    time(&date);
+    localtime_r(&date, &tm);
+    strftime(buf, SHORTLINE, "%a, %d %b %Y %H:%M:%S GMT", &tm);
 
     sprintf(body,
             "<html><title>Server Error</title>"
@@ -115,10 +121,12 @@ static void do_error(int fd,
     sprintf(header,
             "HTTP/1.1 %s %s\r\n"
             "Server: seHTTPd\r\n"
-            "Content-type: text/html\r\n"
+            "Content-type: text/html; charset=ISO-8859-1\r\n"
             "Connection: close\r\n"
-            "Content-length: %d\r\n\r\n",
-            errnum, shortmsg, (int) strlen(body));
+            "Content-length: %d\r\n"
+            "Date: %s\r\n"
+            "Last-Modified: %s\r\n\r\n",
+            errnum, shortmsg, (int) strlen(body), buf, buf);
 
     writen(fd, header, strlen(header));
     writen(fd, body, strlen(body));
@@ -177,7 +185,7 @@ static void serve_static(int fd,
         char buf[SHORTLINE];
 
         len += snprintf(header + len, MAXLINE - len,
-                        "Content-type: %s\r\n"
+                        "Content-type: %s; charset=ISO-8859-1\r\n"
                         "Content-length: %zu\r\n",
                         file_type, filesize);
 
@@ -188,6 +196,13 @@ static void serve_static(int fd,
         len +=
             snprintf(header + len, MAXLINE - len, "Last-Modified: %s\r\n", buf);
     }
+    time_t date;
+    struct tm tm;
+    char buf[SHORTLINE];
+    time(&date);
+    localtime_r(&date, &tm);
+    strftime(buf, SHORTLINE, "%a, %d %b %Y %H:%M:%S GMT", &tm);
+    len += snprintf(header + len, MAXLINE - len, "Date: %s\r\n", buf);
 
     len += snprintf(header + len, MAXLINE - len, "Server: seHTTPd\r\n\r\n");
 
@@ -203,7 +218,7 @@ static void serve_static(int fd,
 
     int srcfd = open(filename, O_RDONLY, 0);
     assert(srcfd > 2 && "open error");
-    sendfile(fd, srcfd, NULL, filesize + 1);
+    sendfile(fd, srcfd, NULL, filesize);
     close(srcfd);
 }
 
