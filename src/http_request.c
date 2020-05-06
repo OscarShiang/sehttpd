@@ -3,6 +3,7 @@
 #endif
 
 #include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -50,9 +51,16 @@ static int http_process_if_modified_since(http_request_t *r UNUSED,
         return 0;
 
     time_t client_time = mktime(&tm);
-    double time_diff = difftime(out->mtime, client_time);
-    /* TODO: use custom absolute value function rather without libm */
-    if (fabs(time_diff) < 1e-6) { /* Not modified */
+
+    union {
+        uint64_t bits;
+        double data;
+    } time_diff;
+    time_diff.data = difftime(out->mtime, client_time);
+
+    /* compute the absolute value by bitwise masking */
+    time_diff.bits &= ~((uint64_t) 1 << 63);
+    if (time_diff.data < 1e-6) { /* Not modified */
         out->modified = false;
         out->status = HTTP_NOT_MODIFIED;
     }
