@@ -299,12 +299,12 @@ void do_request(void *ptr)
         struct stat sbuf;
         if (stat(filename, &sbuf) < 0) {
             do_error(fd, filename, "404", "Not Found", "Can't find the file");
-            continue;
+            goto close;
         }
 
         if (!(S_ISREG(sbuf.st_mode)) || !(S_IRUSR & sbuf.st_mode)) {
             do_error(fd, filename, "403", "Forbidden", "Can't read the file");
-            continue;
+            goto close;
         }
 
         out->mtime = sbuf.st_mtime;
