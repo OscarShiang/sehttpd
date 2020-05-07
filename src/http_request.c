@@ -3,6 +3,7 @@
 #endif
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,12 +56,17 @@ static int http_process_if_modified_since(http_request_t *r UNUSED,
     union {
         uint64_t bits;
         double data;
-    } time_diff;
+    } time_diff, tmp;
     time_diff.data = difftime(out->mtime, client_time);
 
     /* compute the absolute value by bitwise masking */
     time_diff.bits &= ~((uint64_t) 1 << 63);
-    if (time_diff.data < 1e-6) { /* Not modified */
+
+    /* compare if time_diff greater than 1e-6 */
+    tmp.data = 1e-6;
+    time_diff.data = tmp.data - time_diff.data;
+
+    if (!(time_diff.bits >> 63)) { /* Not modified */
         out->modified = false;
         out->status = HTTP_NOT_MODIFIED;
     }
